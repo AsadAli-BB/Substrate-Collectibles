@@ -5,7 +5,8 @@ pub use pallet::*;
 pub mod pallet {
 	use frame_support::pallet;
 use frame_support::sp_runtime::traits::IntegerSquareRoot;
-	use frame_support::{
+	// use frame_support::sp_tracing::event::Event;
+use frame_support::{
 		// pallet,
 		pallet_prelude::{ValueQuery, *},
 		// sp_runtime::app_crypto::sp_core::storage::StorageMap,
@@ -41,7 +42,7 @@ use frame_support::sp_runtime::traits::IntegerSquareRoot;
 	pub trait Config: frame_system::Config {
 		type Currency: Currency<Self::AccountId>;
 		type CollectionRandomness: Randomness<Self::Hash, Self::BlockNumber>;
-
+		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 		#[pallet::constant]
 		type MaximumOwned: Get<u32>;
 	}
@@ -63,24 +64,8 @@ use frame_support::sp_runtime::traits::IntegerSquareRoot;
 		pub color: Color,
 		pub owner: T::AccountId,
 	}
-
-
-
-	//  Maps the Collectible struct to the unique_id.
-	// #[pallet::storage]
-	// pub(super) type CollectibleMap<T: Config> =
-	// 	StorageMap<_, Twox64Concat, [u8; 16], Collectible<T>>;
-
-	// /// Track the collectibles owned by each account.
-	// #[pallet::storage]
-	// pub(super) type OwnerOfCollectibles<T: Config> = StorageMap<
-	// 	_,
-	// 	Twox64Concat,
-	// 	T::AccountId,
-	// 	BoundedVec<[u8; 16], T::MaximumOwned>,
-	// 	ValueQuery,
-	// >;
-
+ 
+ 
   #[pallet::error]
 	pub enum Error<T> {
 		/// Each collectible must have a unique identifier
@@ -99,6 +84,12 @@ use frame_support::sp_runtime::traits::IntegerSquareRoot;
 		BidPriceTooSlow,
 		/// The collectible is nor for sale
 		NotForSale,
+	}
+
+	#[pallet::event]
+	#[pallet::generate_deposit(pub(super) fn deposit_event)]
+	pub enum Event<T: Config> {
+		CollectibleCreated {collectible: [u8; 16], owner: T::AccountId}, 
 	}
 
 

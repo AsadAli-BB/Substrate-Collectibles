@@ -3,13 +3,14 @@ pub use pallet::*;
 
 #[frame_support::pallet]
 pub mod pallet {
-	use frame_support::sp_runtime::traits::IntegerSquareRoot;
+	use frame_support::pallet;
+use frame_support::sp_runtime::traits::IntegerSquareRoot;
 	use frame_support::{
-		pallet,
+		// pallet,
 		pallet_prelude::{ValueQuery, *},
-		sp_runtime::app_crypto::sp_core::storage::StorageMap,
+		// sp_runtime::app_crypto::sp_core::storage::StorageMap,
 		traits::{Currency, Get, Randomness},
-		BoundedVec, StorageValue, Twox64Concat,
+		BoundedVec, Twox64Concat,
 	};
 	use frame_system::pallet_prelude::*;
 	type BalanceOf<T> =
@@ -23,8 +24,18 @@ pub mod pallet {
 
   #[pallet::storage]
   pub(super) type CollectiblesCount<T: Config> = StorageValue<_, u64, ValueQuery>;
+  
+  #[pallet::storage] 
+  pub (super) type CollectibleMap <T: Config> = StorageMap<_, Twox64Concat, [u8; 16], Collectible<T>>;
 
-
+  #[pallet::storage]
+  pub (super) type OwnerOfCollectibles<T: Config> = StorageMap <
+  _,
+  Twox64Concat, 
+  T::AccountId, 
+  BoundedVec<[u8; 16], T::MaximumOwned>,
+  ValueQuery, 
+  >;
   
 	#[pallet::config]
 	pub trait Config: frame_system::Config {

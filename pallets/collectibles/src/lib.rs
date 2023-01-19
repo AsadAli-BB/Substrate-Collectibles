@@ -5,7 +5,8 @@ pub use pallet::*;
 pub mod pallet {
 	use frame_support::pallet;
 	use frame_support::pallet_prelude::DispatchResult;
-use frame_support::sp_runtime::traits::IntegerSquareRoot;
+	use frame_support::sp_runtime::legacy::byte_sized_error::DispatchError;
+	use frame_support::sp_runtime::traits::IntegerSquareRoot;
 	// use frame_support::sp_tracing::event::Event;
 	use frame_support::{
 		// pallet,
@@ -16,7 +17,7 @@ use frame_support::sp_runtime::traits::IntegerSquareRoot;
 		Twox64Concat,
 	};
 	use frame_system::pallet_prelude::OriginFor;
-use frame_system::{pallet_prelude::*, Origin};
+	use frame_system::{pallet_prelude::*, Origin};
 	type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -91,15 +92,30 @@ use frame_system::{pallet_prelude::*, Origin};
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
 		// A new collectible created
-		CollectibleCreated { collectible: [u8; 16], owner: T::AccountId },
-		// A Collectible was transfered Successfuly 
-		TransferSucceeded {collectible: [u8; 16], from: T::AccountId, to: T::AccountId},
-		
+		CollectibleCreated {
+			collectible: [u8; 16],
+			owner: T::AccountId,
+		},
+		// A Collectible was transfered Successfuly
+		TransferSucceeded {
+			collectible: [u8; 16],
+			from: T::AccountId,
+			to: T::AccountId,
+		},
+
 		// Set price of Collectible
-		PriceSet {collectible: [u8; 16], price: Option<BalanceOf<T>>}, 
+		PriceSet {
+			collectible: [u8; 16],
+			price: Option<BalanceOf<T>>,
+		},
 
 		// Collectible Sold
-		CollectibleSold {collectible: [u8; 16], seller: T::AccountId, buyer: T::AccountId, price: Option<BalanceOf<T>>}, 
+		CollectibleSold {
+			collectible: [u8; 16],
+			seller: T::AccountId,
+			buyer: T::AccountId,
+			price: Option<BalanceOf<T>>,
+		},
 	}
 
 	// Internal and Callable Functions
@@ -120,30 +136,76 @@ use frame_system::{pallet_prelude::*, Origin};
 			}
 		}
 
-		pub fn mint (
+		pub fn mint(
 			owner: &T::AccountId,
-			unique_id: [u8; 16], 
-			color: Color,  
+			unique_id: [u8; 16],
+			color: Color,
 		) -> Result<[u8; 16], DispatchError> {
-			let collectible = Collectible::<T> {unique_id, price: None, color, owner: owner.clone()};
-			ensure!(!CollectibleMap::<T>::contains_key(&collectible.unique_id), Error::<T>::DuplicateCollectible);
+			let collectible =
+				Collectible::<T> { unique_id, price: None, color, owner: owner.clone() };
+			// ensure!(
+			// 	!CollectibleMap::<T>::contains_key(&collectible.unique_id),
+			// 	Error::<T>::DuplicateCollectible
+			// );
 
 			let count = CollectiblesCount::<T>::get();
 			let new_count = count.checked_add(1).ok_or(Error::<T>::BoundsOverflow)?;
 			OwnerOfCollectibles::<T>::try_append(&owner, collectible.unique_id)
-			.map_err(|_| Error::<T>::MaximumCollectiblesOwned)?;
+				.map_err(|_| Error::<T>::MaximumCollectiblesOwned)?;
 
 			CollectibleMap::<T>::insert(collectible.unique_id, collectible);
 			CollectiblesCount::<T>::put(new_count);
 
-			Self::deposit_event(Event::CollectibleCreated { collectible: unique_id, owner: owner.clone() });
+			Self::deposit_event(Event::CollectibleCreated {
+				collectible: unique_id,
+				owner: owner.clone(),
+			});
 			Ok(unique_id)
 		}
 
-		pub fn create_collectible (origin: OriginFor<T>) -> DispatchResult {
+		pub fn create_collectible(origin: OriginFor<T>) -> DispatchResult {
 			let sender = ensure_signed(origin)?;
-			let (collectible_gen_unique_id, color) = Self::gen_unique_id(); 
-			Self::mint(&sender, collectible_gen_unique_id, color)?;
+			let (collectible_gen_unique_id, color) = Self::gen_unique_id();
+			Self::mint(&sender, collectible_gen_unique_id, color);
+			Ok(())
+		}
+
+		pub fn do_transfer(collectible_id: [u8; 16], to: T::AccountId) -> DispatchResult {
+			// Get the Collectible
+			let mut collectible =
+				CollectibleMap::<T>::get(&collectible_id).ok_or(Error::<T>::NoCollectible)?;
+			let from = collectible.owner;
+			ensure!(from != to, Error::<T>::TransferToYourself);
+			let mut from_owned = OwnerOfCollectibles::<T>::get(&from);
+			if let Some(ind) = from_owned.iter().position(|&id| id == collectible_id) {
+				from_owned.swap_remove(ind);
+			} else {
+				return Err(Error::<T>::NoCollectible.into());
+			}
+			// Add collectible to the list of owned collectibles.
+			let mut to_owned = OwnerOfCollectibles::<T>::get(&to);
+			to_owned
+				.try_push(collectible_id)
+				.map_err(|()| Error::<T>::MaximumCollectiblesOwned)?;
+			collectible.owner = to.clone();
+			collectible.price = None;
+			CollectibleMap::<T>::insert(&collectible_id, collectible);
+			OwnerOfCollectibles::<T>::insert(&to, to_owned);
+			OwnerOfCollectibles::<T>::insert(&from, from_owned);
+			Self::deposit_event(Event::TransferSucceeded { from, to, collectible: collectible_id });
+			Ok(())
+		}
+
+		// #[pallet::weight(0)]
+		pub fn transfer(
+			origin: OriginFor<T>,
+			to: T::AccountId,
+			unique_id: [u8; 16],
+		) -> DispatchResult {
+			let from = ensure_signed(origin)?;
+			let collectible = CollectibleMap::<T>::get(&unique_id).ok_or(Error::<T>::NoCollectible)?;
+			ensure!(collectible.owner == from, Error::<T>::NotOwner);
+			Self::do_transfer(unique_id, to)?;
 			Ok(())
 		}
 	}

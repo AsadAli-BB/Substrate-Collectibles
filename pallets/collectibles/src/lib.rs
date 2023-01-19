@@ -4,7 +4,8 @@ pub use pallet::*;
 #[frame_support::pallet]
 pub mod pallet {
 	use frame_support::pallet;
-	use frame_support::sp_runtime::traits::IntegerSquareRoot;
+	use frame_support::pallet_prelude::DispatchResult;
+use frame_support::sp_runtime::traits::IntegerSquareRoot;
 	// use frame_support::sp_tracing::event::Event;
 	use frame_support::{
 		// pallet,
@@ -14,7 +15,8 @@ pub mod pallet {
 		BoundedVec,
 		Twox64Concat,
 	};
-	use frame_system::pallet_prelude::*;
+	use frame_system::pallet_prelude::OriginFor;
+use frame_system::{pallet_prelude::*, Origin};
 	type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
@@ -136,6 +138,13 @@ pub mod pallet {
 
 			Self::deposit_event(Event::CollectibleCreated { collectible: unique_id, owner: owner.clone() });
 			Ok(unique_id)
+		}
+
+		pub fn create_collectible (origin: OriginFor<T>) -> DispatchResult {
+			let sender = ensure_signed(origin)?;
+			let (collectible_gen_unique_id, color) = Self::gen_unique_id(); 
+			Self::mint(&sender, collectible_gen_unique_id, color)?;
+			Ok(())
 		}
 	}
 }
